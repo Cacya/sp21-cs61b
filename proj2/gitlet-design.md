@@ -140,7 +140,7 @@ commits
     时间戳
 3. `private TreeMap<String, String> blobs = new TreeMap<>()`
    文件版本树，对于提交中的所有文件，存储filename到文件版本（sha1)的映射
-4. `private String parent_sha1;`  
+4. `private String parentSha1;`  
     父亲的hash值
 
 

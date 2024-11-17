@@ -29,40 +29,32 @@ public class Commit implements Serializable {
     private String blobID;
     private String message;
     private String date;
-    private String parent_sha1;
-    private String parent_sha2;
+    private String parentSha1;
+    private String parentSha2;
 
     /* TODO: fill in the rest of this class. */
     public Commit(String mes) {
-        this.message = mes;
-        if (Repository.HEAD.exists()) {
-            this.parent_sha1 = Repository.getCurCmtSha1();
-        } else {
-            this.parent_sha1 = "";
-        }
-        this.parent_sha2 = "";
-        this.date = dateToTimeStamp(new Date(0));
-        setBlobs();
+        this(mes, "");
     }
 
     public Commit(String mes, String sha2) {
         this.message = mes;
+        this.parentSha2 = sha2;
         if (Repository.HEAD.exists()) {
-            this.parent_sha1 = Repository.getCurCmtSha1();
+            this.parentSha1 = Repository.getCurCmtSha1();
         } else {
-            this.parent_sha1 = "";
+            this.parentSha1 = "";
         }
-        this.parent_sha2 = "";
         this.date = dateToTimeStamp(new Date(0));
         setBlobs();
     }
 
     private void setBlobs() {
         TreeMap<String, String> blobs;
-        if (this.parent_sha1 == "") {
+        if (this.parentSha1 == "") {
             blobs = new TreeMap<>();
         } else {
-            blobs = Repository.getCommit(parent_sha1).getBlobs();
+            blobs = Repository.getCommit(parentSha1).getBlobs();
         }
 
         // Should also guarantee Remove file exists
@@ -86,12 +78,12 @@ public class Commit implements Serializable {
         return Utils.readObject(Utils.join(Repository.VERSIONS_DIR, blobID), TreeMap.class);
     }
 
-    public String getParent_sha1() {
-        return parent_sha1;
+    public String getParentSha1() {
+        return parentSha1;
     }
 
-    public String getParent_sha2() {
-        return parent_sha2;
+    public String getParentSha2() {
+        return parentSha2;
     }
 
     public String getDate() {
@@ -105,9 +97,5 @@ public class Commit implements Serializable {
 
     public String getMessage() {
         return message;
-    }
-
-    public void setParent_sha2(String sha2) {
-        this.parent_sha2 = sha2;
     }
 }

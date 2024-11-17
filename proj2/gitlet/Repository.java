@@ -58,9 +58,9 @@ public class Repository {
         VERSIONS_DIR.mkdir();
         setStage();
 
-        Commit init_cmt = new Commit("initial commit");
-        setCmtObject(init_cmt);
-        setBranch("master", getSha1(init_cmt));
+        Commit initCmt = new Commit("initial commit");
+        setCmtObject(initCmt);
+        setBranch("master", getSha1(initCmt));
     }
 
     private static void setCmtObject(Commit cmt) {
@@ -76,10 +76,10 @@ public class Repository {
         setBranch(Utils.readContentsAsString(HEAD), sha1);
     }
 
-    private static void setBranch(String branch_name, String sha1) {
-        File b = Utils.join(BRANCH_DIR, branch_name);
+    private static void setBranch(String branchName, String sha1) {
+        File b = Utils.join(BRANCH_DIR, branchName);
         Utils.writeContents(b, sha1);
-        Utils.writeContents(HEAD, branch_name);
+        Utils.writeContents(HEAD, branchName);
     }
 
     private static void setStage() {
@@ -87,9 +87,9 @@ public class Repository {
         Utils.writeObject(Remove, move);
     }
 
-    // Get the sha1 value of the head commit of a branch named branch_name.
-    private static String getCmtSha1(String branch_name) {
-        return Utils.readContentsAsString(Utils.join(BRANCH_DIR, branch_name));
+    // Get the sha1 value of the head commit of a branch named branchName.
+    private static String getCmtSha1(String branchName) {
+        return Utils.readContentsAsString(Utils.join(BRANCH_DIR, branchName));
     }
 
     // Get the sha1 value of current Commit by the information of HEAD.
@@ -98,8 +98,8 @@ public class Repository {
     }
 
     // Get the Commit object by its Sha1
-    public static Commit getCommit(String my_sha1) {
-        return Utils.readObject(Utils.join(OBJECT_DIR, my_sha1), Commit.class);
+    public static Commit getCommit(String mySha1) {
+        return Utils.readObject(Utils.join(OBJECT_DIR, mySha1), Commit.class);
     }
 
     // Get the sha1 value of file in the current commit. If the file doesn't exist, return null.
@@ -116,6 +116,7 @@ public class Repository {
      */
     public static void add(String filename) {
         stage = Utils.readObject(Index, TreeMap.class);
+        move = Utils.readObject(Remove, TreeSet.class);
 
         File cf = Utils.join(CWD, filename);
         if (!cf.exists()) {
@@ -124,22 +125,29 @@ public class Repository {
         }
 
         String cf_contents = Utils.readContentsAsString(cf);
-        String cf_sha1 = Utils.sha1(cf_contents);
+        String cfSha1 = Utils.sha1(cf_contents);
         String hf_sha1 = getCurFileSha1(filename);
-        if (cf_sha1.equals(hf_sha1)) {
+        if (move.contains(filename)) {
+            move.remove(filename);
+        } else if (cfSha1.equals(hf_sha1)) {
             if (stage.containsKey(filename)) {
                 stage.remove(filename);
             }
         } else {
-            stage.put(filename, cf_sha1);
-            Utils.writeContents(Utils.join(BLOB_DIR, cf_sha1), cf_contents);
+            stage.put(filename, cfSha1);
+            Utils.writeContents(Utils.join(BLOB_DIR, cfSha1), cf_contents);
         }
-        Utils.writeObject(Index, stage);
+
+        setStage();
     }
 
     /** A commit will save and start tracking any files
      *  that were staged for addition but weren't tracked by its parent. */
     public static void commit(String message) {
+        commit(message, "");
+    }
+
+    private static void commit(String message, String parentSha2) {
         stage = Utils.readObject(Index, TreeMap.class);
         move = Utils.readObject(Remove, TreeSet.class);
         if (stage.isEmpty() && move.isEmpty()) {
@@ -147,7 +155,7 @@ public class Repository {
             System.exit(0);
         }
 
-        Commit cmt = new Commit(message);
+        Commit cmt = new Commit(message, parentSha2);
         setCmtObject(cmt);
         setBranch(getSha1(cmt));
 
@@ -159,6 +167,7 @@ public class Repository {
 
     public static void remove(String filename) {
         stage = Utils.readObject(Repository.Index, TreeMap.class);
+        move = Utils.readObject(Remove, TreeSet.class);
         TreeMap<String, String> blobs = getCommit(getCurCmtSha1()).getBlobs();
         if (!stage.containsKey(filename) && !blobs.containsKey(filename)) {
             System.out.println("No reason to remove the file.");
@@ -168,23 +177,18 @@ public class Repository {
             stage.remove(filename);
         }
         if (blobs.containsKey(filename)) {
-            move = Utils.readObject(Remove, TreeSet.class);
             move.add(filename);
             Utils.restrictedDelete(Utils.join(CWD, filename));
         }
         setStage();
     }
 
-    private static String getParent_sha1(String sha1) {
-        return getCommit(sha1).getParent_sha1();
-    }
-
     private static void printSingleLog(String sha1, Commit cmt) {
         System.out.println("===");
         System.out.println("commit " + sha1);
-        if (cmt.getParent_sha2() != "") {
-            System.out.println(String.format("Merge: %s %s", cmt.getParent_sha1().substring(0, 7),
-                    cmt.getParent_sha2().substring(0, 7)));
+        if (cmt.getParentSha2() != "") {
+            System.out.println(String.format("Merge: %s %s", cmt.getParentSha1().substring(0, 7),
+                    cmt.getParentSha2().substring(0, 7)));
         }
         System.out.println("Date: " + cmt.getDate());
         System.out.println(cmt.getMessage());
@@ -196,25 +200,25 @@ public class Repository {
         while (sha1 != "") {
             Commit cmt = getCommit(sha1);
             printSingleLog(sha1, cmt);
-            sha1 = cmt.getParent_sha1();
+            sha1 = cmt.getParentSha1();
         }
     }
 
     public static void globalLog() {
-        List<String> all_cmt_sha1 = Utils.plainFilenamesIn(OBJECT_DIR);
-        for (String cmt_sha1: all_cmt_sha1) {
-            Commit cmt = getCommit(cmt_sha1);
-            printSingleLog(cmt_sha1, cmt);
+        List<String> allCmtSha1 = Utils.plainFilenamesIn(OBJECT_DIR);
+        for (String cmtSha1: allCmtSha1) {
+            Commit cmt = getCommit(cmtSha1);
+            printSingleLog(cmtSha1, cmt);
         }
     }
 
     public static void find(String message) {
-        List<String> all_cmt_sha1 = Utils.plainFilenamesIn(OBJECT_DIR);
+        List<String> allCmtSha1 = Utils.plainFilenamesIn(OBJECT_DIR);
         boolean flag = false;
-        for (String cmt_sha1: all_cmt_sha1) {
-            Commit cmt = getCommit(cmt_sha1);
+        for (String cmtSha1: allCmtSha1) {
+            Commit cmt = getCommit(cmtSha1);
             if (cmt.getMessage().equals(message)) {
-                System.out.println(cmt_sha1);
+                System.out.println(cmtSha1);
                 flag = true;
             }
         }
@@ -229,8 +233,8 @@ public class Repository {
         /* branch */
         System.out.println("=== Branches ===");
         String cur_branch = Utils.readContentsAsString(HEAD);
-        List<String> all_branch_name = Utils.plainFilenamesIn(BRANCH_DIR);
-        for (String b: all_branch_name) {
+        List<String> all_branchName = Utils.plainFilenamesIn(BRANCH_DIR);
+        for (String b: all_branchName) {
             if (b.equals(cur_branch)) {
                 System.out.print("*");
             }
@@ -238,7 +242,6 @@ public class Repository {
         }
         System.out.println();
 
-        /* Staged Files */
         System.out.println("=== Staged Files ===");
         stage = Utils.readObject(Index, TreeMap.class);
         for (String key: stage.keySet()) {
@@ -246,7 +249,6 @@ public class Repository {
         }
         System.out.println();
 
-        /* Removed Files */
         System.out.println("=== Removed Files ===");
         move = Utils.readObject(Remove, TreeSet.class);
         for (String item: move) {
@@ -254,7 +256,6 @@ public class Repository {
         }
         System.out.println();
 
-        /* Modifications Not Staged For Commit */
         System.out.println("=== Modifications Not Staged For Commit ===");
         List<String> cwd_filename = Utils.plainFilenamesIn(CWD);
         TreeMap<String, String> cur_blobs = getCommit(getCurCmtSha1()).getBlobs();
@@ -278,7 +279,6 @@ public class Repository {
         }
         System.out.println();
 
-        /* Untracked Files */
         System.out.println("=== Untracked Files ===");
         for (String filename: cwd_filename) {
             if (!stage.containsKey(filename) && (!cur_blobs.containsKey(filename) || (move.contains(filename) && cwd_filename.contains(filename)))) {
@@ -294,8 +294,8 @@ public class Repository {
      * java gitlet.Main checkout [branch name]
      */
     public static void checkoutFile(String filename) {
-        String cur_sha1 = getCurCmtSha1();
-        checkoutId(cur_sha1, filename);
+        String curSha1 = getCurCmtSha1();
+        checkoutId(curSha1, filename);
     }
 
     public static void checkoutId(String id, String filename) {
@@ -322,18 +322,18 @@ public class Repository {
         Utils.writeContents(Utils.join(CWD, filename), Utils.readContents(cmt_file));
     }
 
-    public static void checkoutBranch(String branch_name) {
-        if (!branchExists(branch_name)) {
+    public static void checkoutBranch(String branchName) {
+        if (!branchExists(branchName)) {
             System.out.println("No such branch exists.");
             return;
         }
-        if (branch_name.equals(Utils.readContentsAsString(HEAD))) {
+        if (branchName.equals(Utils.readContentsAsString(HEAD))) {
             System.out.println("No need to checkout the current branch.");
             return;
         }
 
-        checkSha1(getCmtSha1(branch_name));
-        Utils.writeContents(HEAD, branch_name);
+        checkSha1(getCmtSha1(branchName));
+        Utils.writeContents(HEAD, branchName);
     }
 
     private static void checkSha1(String sha1) {
@@ -360,28 +360,28 @@ public class Repository {
         setStage();
     }
 
-    public static void createBranch(String branch_name) {
-        if (branchExists(branch_name)) {
+    public static void createBranch(String branchName) {
+        if (branchExists(branchName)) {
             System.out.println("A branch with that name already exists.");
             return;
         }
-        Utils.writeContents(Utils.join(BRANCH_DIR, branch_name), getCurCmtSha1());
+        Utils.writeContents(Utils.join(BRANCH_DIR, branchName), getCurCmtSha1());
     }
 
-    private static boolean branchExists(String branch_name) {
-        return  Utils.join(BRANCH_DIR, branch_name).exists() && !Utils.readContentsAsString(Utils.join(BRANCH_DIR, branch_name)).equals("null");
+    private static boolean branchExists(String branchName) {
+        return  Utils.join(BRANCH_DIR, branchName).exists() && !Utils.readContentsAsString(Utils.join(BRANCH_DIR, branchName)).equals("null");
     }
 
-    public static void removeBranch(String branch_name) {
+    public static void removeBranch(String branchName) {
         String this_branch = Utils.readContentsAsString(HEAD);
-        if (!branchExists(branch_name)) {
+        if (!branchExists(branchName)) {
             System.out.println("A branch with that name does not exist.");
             System.exit(0);
-        } else if (branch_name.equals(this_branch)) {
+        } else if (branchName.equals(this_branch)) {
             System.out.println("Cannot remove the current branch.");
             System.exit(0);
         }
-        Utils.writeContents(Utils.join(BRANCH_DIR, branch_name), "null");
+        Utils.writeContents(Utils.join(BRANCH_DIR, branchName), "null");
     }
 
     public static void reset(String cmt_id) {
@@ -398,10 +398,10 @@ public class Repository {
         while (!sha1.equals("")) {
             dist += 1;
             Commit cmt = getCommit(sha1);
-            if (!cmt.getParent_sha2().equals("")) {
-                add_map(cmt.getParent_sha2(), map, dist);
+            if (!cmt.getParentSha2().equals("")) {
+                map = add_map(cmt.getParentSha2(), map, dist);
             }
-            sha1 = cmt.getParent_sha1();
+            sha1 = cmt.getParentSha1();
             map.put(sha1, dist);
         }
         return map;
@@ -458,10 +458,10 @@ public class Repository {
         return false;
     }
 
-    private static void merge_conflict(String filename, String cur_sha1, String br_sha1) {
+    private static void merge_conflict(String filename, String curSha1, String br_sha1) {
         String first = "<<<<<<< HEAD\n";
-        if (cur_sha1 != null) {
-            first += Utils.readContentsAsString(Utils.join(BLOB_DIR, cur_sha1));
+        if (curSha1 != null) {
+            first += Utils.readContentsAsString(Utils.join(BLOB_DIR, curSha1));
         }
         first += "=======\n";
         if (br_sha1 != null) {
@@ -473,37 +473,47 @@ public class Repository {
         stage.put(filename, sha1);
     }
 
-    public static void merge(String branch_name) {
+    public static void merge(String branchName) {
         stage = Utils.readObject(Index, TreeMap.class);
         move = Utils.readObject(Remove, TreeSet.class);
         if (!stage.isEmpty() || !move.isEmpty()) {
             System.out.println("You have uncommitted changes.");
             System.exit(0);
-        } else if (!branchExists(branch_name)) {
+        } else if (!branchExists(branchName)) {
             System.out.println("A branch with that name does not exist.");
             return;
-        } else if (branch_name.equals(Utils.readContentsAsString(HEAD))) {
+        } else if (branchName.equals(Utils.readContentsAsString(HEAD))) {
             System.out.println("Cannot merge a branch with itself.");
             return;
         }
 
-        String cur_sha1 = getCurCmtSha1();
-        String br_sha1 = getCmtSha1(branch_name);
-        String split_sha1 = find_split(cur_sha1, br_sha1);
+        String curSha1 = getCurCmtSha1();
+        String br_sha1 = getCmtSha1(branchName);
+        String split_sha1 = find_split(curSha1, br_sha1);
         if (split_sha1.equals(br_sha1)) {
             System.out.println("Given branch is an ancestor of the current branch.");
             return;
-        } else if (split_sha1.equals(cur_sha1)) {
-            checkoutBranch(branch_name);
+        } else if (split_sha1.equals(curSha1)) {
+            checkoutBranch(branchName);
             System.out.println("Current branch fast-forwarded.");
             return;
         }
 
         boolean flag = false;
-        TreeMap<String, String> cur_blobs = getCommit(cur_sha1).getBlobs();
+        TreeMap<String, String> cur_blobs = getCommit(curSha1).getBlobs();
         TreeMap<String, String> br_blobs = getCommit(br_sha1).getBlobs();
         TreeMap<String, String> split_blobs = getCommit(split_sha1).getBlobs();
         List<String> cwd_file = plainFilenamesIn(CWD);
+
+        for (String filename: br_blobs.keySet()) {
+            if (!cur_blobs.containsKey(filename) && !split_blobs.containsKey(filename)) {
+                if (cwd_file.contains(filename)) {
+                    System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+                    return;
+                }
+            }
+        }
+
         for (String filename: split_blobs.keySet()) {
             String file_sha1 = split_blobs.get(filename);
             if (br_blobs.containsKey(filename) && cur_blobs.containsKey(filename)
@@ -520,10 +530,6 @@ public class Repository {
 
         for (String filename: br_blobs.keySet()) {
             if (!cur_blobs.containsKey(filename) && !split_blobs.containsKey(filename)) {
-                if (cwd_file.contains(filename)) {
-                    System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
-                    return;
-                }
                 checkoutId(br_sha1, filename);
                 stage.put(filename, br_blobs.get(filename));
             } else if (!split_blobs.containsKey(filename) && need_merge(filename, cur_blobs, br_blobs, split_blobs)) {
@@ -532,10 +538,9 @@ public class Repository {
             }
         }
         Utils.writeObject(Index, stage);
-        String message = String.format("Merged %s into %s.", branch_name, Utils.readContentsAsString(HEAD));
-        commit(message);
+        String message = String.format("Merged %s into %s.", branchName, Utils.readContentsAsString(HEAD));
+        commit(message, br_sha1);
         Commit cmt = getCommit(getCurCmtSha1());
-        cmt.setParent_sha2(br_sha1);
         if (flag) {
             System.out.println("Encountered a merge conflict.");
         }
